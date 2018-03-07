@@ -15,9 +15,23 @@ namespace PassGenAI.HMM
 {
     public static class HMMUtilities
     {
-        public static HMMGroup CreateHiddenMarkovModel(IEnumerable<string> fileNames, int? length = null)
+        public enum SplitAlgorithm
         {
-            var ngrams = GetNgramsSimple(fileNames, length ?? 8);
+            Simple,
+            ByWord
+        }
+        public static HMMGroup CreateHiddenMarkovModel(IEnumerable<string> fileNames, int? length = null, SplitAlgorithm algo = SplitAlgorithm.Simple)
+        {
+            string[][] ngrams = null; ;
+            switch (algo)
+            {
+                case SplitAlgorithm.Simple:
+                    ngrams = GetNgramsSimple(fileNames, length ?? 8);
+                    break;
+                case SplitAlgorithm.ByWord:
+                    ngrams = GetNgrams(fileNames, length, true);
+                    break;
+            }
 
             var codebook = new Codification("data", ngrams);
             var sequence = codebook.ParallelTransform("data", ngrams);
@@ -51,7 +65,7 @@ namespace PassGenAI.HMM
                         var line = reader.ReadLine();
                         if (line.Length == length)
                         {
-                            ngrams.Add(line.Select(x=>x.ToString()).ToArray());
+                            ngrams.Add(line.Select(x => x.ToString()).ToArray());
                         }
                     }
                 }
@@ -59,9 +73,8 @@ namespace PassGenAI.HMM
             return ngrams.ToArray();
         }
 
-        private static string[][] GetNgrams(IEnumerable<string> fileNames, int? length = null)
+        private static string[][] GetNgrams(IEnumerable<string> fileNames, int? length = null, bool byWord = false)
         {
-            bool byWord = false;
             var passwords = new List<string>(50000000);
             foreach (var fileName in fileNames)
             {
