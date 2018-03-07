@@ -17,6 +17,12 @@ You will probably want to setup hashcat so that you can test the results as well
 
 <a href="https://github.com/hashcat/hashcat">Hashcat on Github</a>
 
+## Usage Examples
+
+* PassGenAI.exe hmm password_list.txt
+* PassGenAI.exe mask password_list.txt "c:\hashcat\hashcat64.exe --session job -O -a 3 -m 100 hashes.txt {0}" > hashcat.bat
+* PassGenAI.exe passgen
+
 ## Software Licensing Policy
 
 ##### For Open Source Projects
