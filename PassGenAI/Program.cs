@@ -33,7 +33,7 @@ namespace PassGenAI
                     GeneratePasswords(args.Length > 1 ? args[1] : @"TrainedModels/hmm_words_v2.data", args.Length > 2 ? int.Parse(args[2]) : 4);
                     break;
                 case "walks":
-                    GenerateWalks(12);
+                    GenerateWalks(args.Length > 1 ? int.Parse(args[1]) : 8);
                     break;
                 default:
                     GeneratePasswords();
