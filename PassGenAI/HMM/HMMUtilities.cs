@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using PassGenAI.HMM;
+using PassGenAI.Core;
 
 namespace PassGenAI.HMM
 {
@@ -20,16 +21,16 @@ namespace PassGenAI.HMM
             Simple,
             ByWord
         }
-        public static HMMGroup CreateHiddenMarkovModel(IEnumerable<string> fileNames, int? length = null, SplitAlgorithm algo = SplitAlgorithm.Simple)
+        public static HMMGroup CreateHiddenMarkovModel(IEnumerable<string> fileNames, int? length = null, SplitAlgorithm algo = SplitAlgorithm.Simple, bool ignoreCase = false)
         {
-            string[][] ngrams = null; ;
+            string[][] ngrams = null;
             switch (algo)
             {
                 case SplitAlgorithm.Simple:
                     ngrams = GetNgramsSimple(fileNames, length ?? 8);
                     break;
                 case SplitAlgorithm.ByWord:
-                    ngrams = GetNgrams(fileNames, length, true);
+                    ngrams = GetNgrams(fileNames, length, true, ignoreCase);
                     break;
             }
 
@@ -73,7 +74,7 @@ namespace PassGenAI.HMM
             return ngrams.ToArray();
         }
 
-        private static string[][] GetNgrams(IEnumerable<string> fileNames, int? length = null, bool byWord = false)
+        private static string[][] GetNgrams(IEnumerable<string> fileNames, int? length = null, bool byWord = false, bool ignoreCase = false)
         {
             var passwords = new List<string>(50000000);
             foreach (var fileName in fileNames)
@@ -86,7 +87,8 @@ namespace PassGenAI.HMM
                         while (!reader.EndOfStream)
                         {
                             var line = reader.ReadLine();
-                            if (line.Length == length) passwords.Add(line);
+                            if (!byWord && line.Length == length) passwords.Add(line);
+                            else if (byWord && line.Length >= length) passwords.Add(line);
                         }
                     }
                     else
@@ -105,12 +107,13 @@ namespace PassGenAI.HMM
                 var temp = new List<string[]>(passwords.Count);
                 Parallel.For(0, passwords.Count, x =>
                 {
-                    ParseByWord(x, passwords, temp);
+                    Common.ParseByWord(x, passwords, temp, ignoreCase, length ?? 0);
                 });
+
                 if (length == null)
                     ngrams = temp.GroupBy(x => x[0]).OrderByDescending(x => x.Count()).SelectMany(x => x).Take(1000000).ToArray();
                 else
-                    ngrams = temp.GroupBy(x => x[0]).OrderByDescending(x => x.Count()).SelectMany(x => x).ToArray();
+                    ngrams = temp.GroupBy(x => x[0]).OrderByDescending(x => x.Count()).SelectMany(x => x).Take(1000000).ToArray();
             }
             else
             {
@@ -118,7 +121,7 @@ namespace PassGenAI.HMM
 
                 Parallel.For(0, passwords.Count, x =>
                 {
-                    ParseByChar(x, passwords, ngrams);
+                    Common.ParseByChar(x, passwords, ngrams);
                 });
 
                 if (length == null)
@@ -129,56 +132,6 @@ namespace PassGenAI.HMM
             return ngrams;
         }
 
-        private static void ParseByWord(int index, List<string> pwds, List<string[]> ngrams)
-        {
-            var values = new List<List<string>>();
-            int dos = 0;
-            while (dos < 2)
-            {
-                var val = new List<string>();
-                var transitionIndexes = new List<int>() { 0 };
-                for (int i = 0; i < pwds[index].Length - 1; i++)
-                {
-                    if (CharType(pwds[index][i], dos == 1) != CharType(pwds[index][i + 1], dos == 1))
-                        transitionIndexes.Add(i + 1);
-                }
-
-                for (int i = 0; i < transitionIndexes.Count; i++)
-                {
-                    if (i < transitionIndexes.Count - 1)
-                        val.Add(pwds[index].Substring(transitionIndexes[i], transitionIndexes[i + 1] - transitionIndexes[i]));
-                    else
-                        val.Add(pwds[index].Substring(transitionIndexes[i]));
-                }
-
-                values.Add(val);
-
-                dos++;
-            }
-
-
-            lock (ngrams)
-            {
-                ngrams.Add(values[0].ToArray());
-                if (values[0].Count != values[1].Count)
-                    ngrams.Add(values[1].ToArray());
-            }
-
-        }
-
-        private static void ParseByChar(int index, List<string> pwds, string[][] ngrams)
-        {
-            var characters = new string[pwds[index].Length];
-            for (int i = 0; i < pwds[index].Length; i++)
-            {
-                characters[i] = pwds[index].Substring(i, 1);
-            }
-            ngrams[index] = characters.ToArray();
-        }
-
-        private static int CharType(char c, bool ignoreCase = false)
-        {
-            return char.IsDigit(c) ? 0 : (!char.IsLetterOrDigit(c) ? 1 : (ignoreCase ? 2 : (char.IsUpper(c) ? 2 : 3)));
-        }
+        
     }
 }
