@@ -3,6 +3,7 @@ using PassGenAI.Masks;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -13,27 +14,38 @@ namespace PassGenAI
     {
         static void Main(string[] args)
         {
-            if (args?.Length < 1) args = new[] { "" };
+            if (args?.Length < 1) args = new[] { "pwds1" };
+
+            if (!ValidateArgs(args))
+            {
+                Console.WriteLine("Invalid Arguments!");
+                PrintUsage();
+                return;
+            }
 
             switch (args[0])
             {
                 case "hmm":
-                    TrainModels(args.Length > 1 ? args[1] : @"G:\68_linkedin_found_plain_password_only.txt");
+                    TrainModels(args[1]);
                     break;
                 case "hmm2":
-                    TrainModels(args.Length > 1 ? args[1] : @"G:\68_linkedin_found_plain_password_only.txt", true);
+                    TrainModels(args[1], true);
                     break;
                 case "mask":
-                    GenerateMasks(args.Length > 1 ? args[1] : @"G:\68_linkedin_found_plain_password_only.txt", args.Length > 2 ? args[2] : "{1:00000}\t{2}\t{0}");
+                    GenerateMasks(args[1], args[2]);
                     break;
                 case "deepmask":
-                    GenerateDeepMasks(args.Length > 1 ? args[1] : @"G:\68_linkedin_found_plain_password_only.txt", args.Length > 2 ? args[2] : "{1:00000}\t{2}\t{0}");
+                    GenerateDeepMasks(args[1], args[2]);
                     break;
-                case "pwds":
-                    GeneratePasswords(args.Length > 1 ? args[1] : @"TrainedModels/hmm_words_v2.data", args.Length > 2 ? int.Parse(args[2]) : 4);
+                case "pwds2":
+                    if (args.Length == 1) args = new string[] { args[0], "", "" };
+                    if (args.Length == 2) args = new string[] { args[0], args[1], "8" };
+                    var length = int.TryParse(args[1], out var len) ? len : (int.TryParse(args[2], out len) ? len : 8);
+                    var path = File.Exists(args[1]) ? args[1] : (File.Exists(args[2]) ? args[2] : null);
+                    GeneratePasswords(args[1], length);
                     break;
                 case "walks":
-                    GenerateWalks(args.Length > 1 ? int.Parse(args[1]) : 8);
+                    GenerateWalks(args.Length == 1 ? 8 : int.Parse(args[1]));
                     break;
                 default:
                     GeneratePasswords();
@@ -41,10 +53,55 @@ namespace PassGenAI
             }
         }
 
+        private static void PrintUsage()
+        {
+            Console.WriteLine("Usage:");
+            Console.WriteLine("1) Generate Passwords");
+            Console.WriteLine("\tPassGenAI.exe pwds1");
+            Console.WriteLine("\tPassGenAI.exe pwds2 <FileName> [PasswordLength (Default=8)]");
+            Console.WriteLine("2) Train Hidden Markov Model (Charater Based)");
+            Console.WriteLine("\tPassGenAI.exe hmm");
+            Console.WriteLine("3) Train Hidden Markov Model (Word Based)");
+            Console.WriteLine("\tPassGenAI.exe hmm2");
+            Console.WriteLine("4) Generate Masks");
+            Console.WriteLine("\tPassGenAI.exe mask");
+            Console.WriteLine("5) Generate Deep Masks");
+            Console.WriteLine("\tPassGenAI.exe deepmask");
+            Console.WriteLine("6) Generate Keyboard Walks");
+            Console.WriteLine("\tPassGenAI.exe walks [WalkLength (Default=8)]");
+        }
+
+        private static bool ValidateArgs(string[] args)
+        {
+            try
+            {
+                if (args?.Length < 1) args = new[] { "" };
+
+                switch (args[0])
+                {
+                    case "hmm":
+                        return args.Length > 1 && File.Exists(args[1]);
+                    case "hmm2":
+                        return args.Length > 1 && File.Exists(args[1]);
+                    case "mask":
+                        return args.Length > 2 && File.Exists(args[1]);
+                    case "deepmask":
+                        return args.Length > 2 && File.Exists(args[1]);
+                    case "pwds2":
+                        return (args.Length == 2 && (File.Exists(args[1])) || int.TryParse(args[2], out var _)) || (args.Length == 3 && File.Exists(args[1]) && int.TryParse(args[2], out var _));
+                    case "walks":
+                        return args.Length == 1 || (args.Length > 1 && int.TryParse(args[1], out var _));
+                    default:
+                        return true;
+                }
+            }
+            catch { return false; }
+        }
+
         private static void GenerateWalks(int length)
         {
             var walks = Keyboard.KeyboardWalks.Walk(length);
-            foreach(var walk in walks)
+            foreach (var walk in walks)
             {
                 Console.WriteLine(walk);
             }
