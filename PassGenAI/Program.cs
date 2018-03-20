@@ -45,7 +45,7 @@ namespace PassGenAI
                     GeneratePasswords(args[1], length);
                     break;
                 case "walks":
-                    GenerateWalks(args.Length == 1 ? 8 : int.Parse(args[1]));
+                    GenerateWalks(args.Length == 1 ? 8 : int.Parse(args[1]), false);
                     break;
                 default:
                     GeneratePasswords();
@@ -98,9 +98,9 @@ namespace PassGenAI
             catch { return false; }
         }
 
-        private static void GenerateWalks(int length)
+        private static void GenerateWalks(int length, bool simple)
         {
-            var walks = Keyboard.KeyboardWalks.Walk(length);
+            var walks = Keyboard.KeyboardWalks.Walk(length, simple);
             foreach (var walk in walks)
             {
                 Console.WriteLine(walk);

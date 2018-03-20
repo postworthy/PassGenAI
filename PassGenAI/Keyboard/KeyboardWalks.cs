@@ -19,27 +19,33 @@ namespace PassGenAI.Keyboard
             new[] { "","qQ","wW","eE","rR","tT","yY","uU","iI","oO","pP","[{","]}", "\\|" },
             new[] { "","aA","sS","dD","fF","gG","hH","jJ","kK","lL",";:","'\"","", "" },
             new[] { "","zZ","xX","cC","vV","bB","nN","mM",",<",".>","/?","","", "" },
-            new[] { "  ","  ","  ","  ","  ","  ","  ","  ","  ","  ","  ","  ","  ", "  " }
+            //new[] { "  ","  ","  ","  ","  ","  ","  ","  ","  ","  ","  ","  ","  ", "  " }
         };
 
-        private static (int x, int y)[][] moveMatrix = new[] {
+        private static (int x, int y)[][] complexMoveMatrix = new[] {
             new (int x, int y)[]{ (-1, -1), (0, -1), (1, -1)},
             new (int x, int y)[]{ (-1, 0), (0, 0), (1, 0)},
             new (int x, int y)[]{ (-1, 1), (0, 1), (1, 1)},
         };
 
-        public static IEnumerable<string> Walk(int length)
+        private static (int x, int y)[][] simpleMoveMatrix = new[] {
+            new (int x, int y)[]{ (0, 0), (0, -1), (0, 0)},
+            new (int x, int y)[]{ (-1, 0), (0, 0), (1, 0)},
+            new (int x, int y)[]{ (0, 0), (0, 1), (0, 0)},
+        };
+
+        public static IEnumerable<string> Walk(int length, bool simple = true)
         {
             var ngrams = new List<string[]>();
 
-            var moves = moveMatrix.SelectMany(m => m).ToList();
+            var moves = simple ? simpleMoveMatrix.SelectMany(m => m).ToList() : complexMoveMatrix.SelectMany(m => m).ToList();
             for (int y = 0; y < keyboard.Length; y++)
             {
                 for (int x = 0; x < keyboard[y].Length; x++)
                 {
                     moves.ForEach(m =>
                     {
-                        if (m.x + x >= 0 && m.y + y >= 0 && m.x + x <= 13 && m.y + y <= 4 && !(m.x == 0 && m.y == 0))
+                        if (m.x + x >= 0 && m.y + y >= 0 && m.x + x <= keyboard[0].Length-1 && m.y + y <= keyboard.Length-1 && !(m.x == 0 && m.y == 0))
                         {
                             var part1 = keyboard[y][x];
                             var part2 = keyboard[y + m.y][m.x + x];
@@ -55,25 +61,46 @@ namespace PassGenAI.Keyboard
                 }
             }
 
-            var ngramGroups = ngrams.GroupBy(x => x[0]);
+            var ngramGroups = ngrams.GroupBy(x => x[0]).ToList();
+
+            var ngramLookup = new Dictionary<string, List<string[]>>();
+
+            ngramGroups.ForEach(ng => ngramLookup.Add(ng.Key, ng.Select(x => x).ToList()));
+            ngramGroups = null;
+
+            var queue = new System.Collections.Concurrent.ConcurrentQueue<List<string>>();
+
+            var t = Task.Factory.StartNew(() =>
+            {
+                ngramLookup.Keys.AsParallel().ForAll(key =>
+                {
+                    var results = ngramLookup[key.ToString()].Select(x => key + x[1]).ToList();
+                    while (results.First().Length < length)
+                    {
+                        var nextResults = new List<string>(results.Count * ngramLookup.Keys.Count);
+                        foreach (var r in results)
+                        {
+                            nextResults.AddRange(ngramLookup[r.Last().ToString()].Select(x => r + x[1]));
+                        }
+                        results = nextResults;
+                    }
+
+                    queue.Enqueue(results);
+                });
+            });
+
+            while (t.Status != TaskStatus.Running) ; //Wait for it to get started
 
             do
             {
-                foreach (var g in ngramGroups)
+                while(queue.TryDequeue(out var items))
                 {
-                    foreach (var item in g)
+                    foreach (var item in items)
                     {
-                        var result = string.Join("", item);
-
-                        while (result.Length < length)
-                        {
-                            var next = ngramGroups.Where(x => x.Key == result.Last().ToString()).SelectMany(x => x).OrderBy(x => Guid.NewGuid()).FirstOrDefault();
-                            result = result + string.Join("", next.Skip(1));
-                        }
-                        yield return result;
+                        yield return item;
                     }
                 }
-            } while (true);
+            } while (t.Status == TaskStatus.Running);
         }
     }
 }
