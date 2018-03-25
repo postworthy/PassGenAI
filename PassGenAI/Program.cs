@@ -100,7 +100,7 @@ namespace PassGenAI
 
         private static void GenerateWalks(int length, bool simple)
         {
-            var walks = Keyboard.KeyboardWalks.Walk(length, simple);
+            var walks = Keyboard.KeyboardWalks.OclWalk(length, simple);
             foreach (var walk in walks)
             {
                 Console.WriteLine(walk);

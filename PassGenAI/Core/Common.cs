@@ -34,7 +34,7 @@ namespace PassGenAI.Core
 
                 dos++;
             }
-            
+
             lock (ngrams)
             {
                 ngrams.Add(values[0].ToArray());
@@ -62,7 +62,7 @@ namespace PassGenAI.Core
                     val.Add(pwds[index].Substring(transitionIndexes[i]));
             }
 
-            if(minlength > 0)
+            if (minlength > 0)
             {
                 val = val.Where(x => x.Length >= minlength).ToList();
             }
@@ -92,6 +92,35 @@ namespace PassGenAI.Core
         public static int CharType(char c, bool ignoreCase = false)
         {
             return char.IsDigit(c) ? 0 : (!char.IsLetterOrDigit(c) ? 1 : (ignoreCase ? 2 : (char.IsUpper(c) ? 2 : 3)));
+        }
+
+        public static IEnumerable<IEnumerable<T>> Chunkify<T>(this IEnumerable<T> source, int chunkSize)
+        {
+            long globalIndex = 0;
+            int groupID = 0;
+            while (source.Any())
+            {
+                yield return source.Take(chunkSize);
+                source = source.Skip(chunkSize);
+            }
+        }
+        public static IEnumerable<long> Range(this long source, long length)
+        {
+            for (long i = source; i < length; i++)
+            {
+                yield return i;
+            }
+        }
+
+        public static IEnumerable<char> Skip(this IEnumerable<char> source, long skip)
+        {
+            while (skip > int.MaxValue)
+            {
+                source = source.Skip(int.MaxValue);
+                skip -= int.MaxValue;
+            }
+            source = source.Skip((int)skip);
+            return source;
         }
     }
 }
