@@ -29,7 +29,10 @@ namespace PassGenAI
                     TrainModels(args[1]);
                     break;
                 case "hmm2":
-                    TrainModels(args[1], true);
+                    TrainModels(args[1], byWord: true);
+                    break;
+                case "hmm3":
+                    TrainModels(args[1], byPairs: true);
                     break;
                 case "mask":
                     GenerateMasks(args[1], args[2]);
@@ -40,12 +43,12 @@ namespace PassGenAI
                 case "pwds2":
                     if (args.Length == 1) args = new string[] { args[0], "", "" };
                     if (args.Length == 2) args = new string[] { args[0], args[1], "8" };
-                    var length = int.TryParse(args[1], out var len) ? len : (int.TryParse(args[2], out len) ? len : 8);
+                    var length = int.TryParse(args[1], out var len) ? len : (int.TryParse(args[2], out len) ? (int?)len : null);
                     var path = File.Exists(args[1]) ? args[1] : (File.Exists(args[2]) ? args[2] : null);
                     GeneratePasswords(args[1], length);
                     break;
                 case "walks":
-                    GenerateWalks(args.Length == 1 ? 8 : int.Parse(args[1]), false);
+                    GenerateWalks(args.Length == 1 ? 8 : int.Parse(args[1]), args.Any(x=>x.ToLower() == "simple"));
                     break;
                 default:
                     GeneratePasswords();
@@ -63,11 +66,13 @@ namespace PassGenAI
             Console.WriteLine("\tPassGenAI.exe hmm");
             Console.WriteLine("3) Train Hidden Markov Model (Word Based)");
             Console.WriteLine("\tPassGenAI.exe hmm2");
-            Console.WriteLine("4) Generate Masks");
+            Console.WriteLine("4) Train Hidden Markov Model (Pair Based)");
+            Console.WriteLine("\tPassGenAI.exe hmm2");
+            Console.WriteLine("5) Generate Masks");
             Console.WriteLine("\tPassGenAI.exe mask");
-            Console.WriteLine("5) Generate Deep Masks");
+            Console.WriteLine("6) Generate Deep Masks");
             Console.WriteLine("\tPassGenAI.exe deepmask");
-            Console.WriteLine("6) Generate Keyboard Walks");
+            Console.WriteLine("7) Generate Keyboard Walks");
             Console.WriteLine("\tPassGenAI.exe walks [WalkLength (Default=8)]");
         }
 
@@ -82,6 +87,8 @@ namespace PassGenAI
                     case "hmm":
                         return args.Length > 1 && File.Exists(args[1]);
                     case "hmm2":
+                        return args.Length > 1 && File.Exists(args[1]);
+                    case "hmm3":
                         return args.Length > 1 && File.Exists(args[1]);
                     case "mask":
                         return args.Length > 2 && File.Exists(args[1]);
@@ -100,7 +107,7 @@ namespace PassGenAI
 
         private static void GenerateWalks(int length, bool simple)
         {
-            var walks = Keyboard.KeyboardWalks.OclWalk(length, simple);
+            var walks = Keyboard.KeyboardWalks.CanOclWalk() ? Keyboard.KeyboardWalks.OclWalk(length, simple) : Keyboard.KeyboardWalks.Walk(length, simple);
             foreach (var walk in walks)
             {
                 Console.WriteLine(walk);
@@ -137,7 +144,7 @@ namespace PassGenAI
             });
         }
 
-        static void GeneratePasswords(string path, int length = 4)
+        static void GeneratePasswords(string path, int? length = null)
         {
             //foreach (var pwd in HMMGroup.Load(path).Generate(length))
             //{
@@ -146,7 +153,7 @@ namespace PassGenAI
 
             var enumerables = new List<IEnumerator<string>>();
             int threadMax = Process.GetCurrentProcess().Threads.Count;
-            var lengths = new[] { 1, 2, 3, 4, 5 };
+            var lengths = length == null ? new[] { 1, 2, 3, 4, 5 } : new[] { length.Value };
             var split = (int)Math.Ceiling(lengths.Length / (threadMax * 1.0));
             foreach (var l in lengths)
             {
@@ -233,7 +240,7 @@ namespace PassGenAI
             }
         }
 
-        static void TrainModels(string fileName = @"G:\68_linkedin_found_plain_password_only.txt", bool byWord = false)
+        static void TrainModels(string fileName = @"G:\68_linkedin_found_plain_password_only.txt", bool byWord = false, bool byPairs = false)
         {
             /*
              * This is an example of how you could train your own HMM for password guessing.
@@ -241,8 +248,30 @@ namespace PassGenAI
              * 
              */
 
-            if (!byWord)
+            if (byWord)
             {
+                HMMUtilities.CreateHiddenMarkovModel(
+                    new[] { fileName },
+                    length: 4,
+                    algo: HMMUtilities.SplitAlgorithm.ByWord,
+                    ignoreCase: true).Save("hmm_words.data");
+
+                
+            }
+            else if (byPairs)
+            {
+                HMMUtilities.CreateHiddenMarkovModel(
+                    new[] { fileName },
+                    length: 0,
+                    algo: HMMUtilities.SplitAlgorithm.Pairs
+                    ).Save("hmm_pairs.data");
+            }
+            else
+            {
+                HMMUtilities.CreateHiddenMarkovModel(
+                            new[] { fileName },
+                            0).Save("hmm.data");
+                /*
                 Parallel.For(7, 21, length =>
                 {
                     //int length = 14;
@@ -250,14 +279,7 @@ namespace PassGenAI
                             new[] { fileName },
                             length).Save("hmm_length_of_" + length + ".data");
                 });
-            }
-            else
-            {
-                HMMUtilities.CreateHiddenMarkovModel(
-                    new[] { fileName },
-                    length: 4,
-                    algo: HMMUtilities.SplitAlgorithm.ByWord,
-                    ignoreCase: true).Save("hmm_words.data");
+                */
             }
         }
     }

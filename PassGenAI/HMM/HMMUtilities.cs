@@ -19,6 +19,7 @@ namespace PassGenAI.HMM
         public enum SplitAlgorithm
         {
             Simple,
+            Pairs,
             ByWord
         }
         public static HMMGroup CreateHiddenMarkovModel(IEnumerable<string> fileNames, int? length = null, SplitAlgorithm algo = SplitAlgorithm.Simple, bool ignoreCase = false)
@@ -28,6 +29,9 @@ namespace PassGenAI.HMM
             {
                 case SplitAlgorithm.Simple:
                     ngrams = GetNgramsSimple(fileNames, length ?? 8);
+                    break;
+                case SplitAlgorithm.Pairs:
+                    ngrams = GetNgramsPairs(fileNames, length ?? 8);
                     break;
                 case SplitAlgorithm.ByWord:
                     ngrams = GetNgrams(fileNames, length, true, ignoreCase);
@@ -64,13 +68,30 @@ namespace PassGenAI.HMM
                     while (!reader.EndOfStream)
                     {
                         var line = reader.ReadLine();
-                        if (line.Length == length)
+                        if (length == 0 || line.Length == length)
                         {
                             ngrams.Add(line.Select(x => x.ToString()).ToArray());
                         }
                     }
                 }
             }
+            return ngrams.ToArray();
+        }
+
+        private static string[][] GetNgramsPairs(IEnumerable<string> fileNames, int length)
+        {
+            var ngrams = new List<string[]>(60000000);
+            var simple = GetNgramsSimple(fileNames, length);
+            foreach (var item in simple)
+            {
+                var pairs = new List<string>();
+                for (int i = 0; i < item.Length - 1; i++)
+                {
+                    pairs.Add(item[i] + item[i + 1]);
+                }
+                ngrams.Add(pairs.ToArray());
+            }
+
             return ngrams.ToArray();
         }
 

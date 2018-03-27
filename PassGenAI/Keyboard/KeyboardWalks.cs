@@ -128,6 +128,13 @@ namespace PassGenAI.Keyboard
             } while (t.Status == TaskStatus.Running);
         }
 
+        public static bool CanOclWalk()
+        {
+            Platform[] platforms = Cl.GetPlatformIDs(out var err);
+            Device[] devices = Cl.GetDeviceIDs(platforms[0], DeviceType.Gpu, out err);
+            return devices.Any();
+        }
+
         public static IEnumerable<string> OclWalk(int length, bool simple = true)
         {
             var ngrams = new List<char[]>();
@@ -170,7 +177,7 @@ namespace PassGenAI.Keyboard
                 var n = new char[longestChain];
                 Array.Copy(x, n, x.Length);
                 return n;
-            }).ToArray();
+            }).OrderByDescending(x => char.IsLetterOrDigit(x[0])).ToArray();
 
             var queue = new System.Collections.Concurrent.ConcurrentQueue<(char[] Data, int ItemLength)>();
 
@@ -178,21 +185,44 @@ namespace PassGenAI.Keyboard
 
             while (t.Status != TaskStatus.Running) ; //Wait for it to get started
 
+            ulong zeroCount = 0;
+            ulong tooShort = 0;
+
             do
             {
+
                 while (queue.TryDequeue(out var item))
                 {
+                    var walks = new Dictionary<string, int>(); //We will do unique per queue item but not globally unique
+                    //var wlist = new List<string>();
                     for (int i = 0; i < item.Data.Length / item.ItemLength; i++)
                     {
-                        var str = "";
-                        for (int j = 0; j < item.ItemLength; j++)
+                        if (item.Data[i * item.ItemLength] != '\0')
                         {
-                            str += item.Data[i * item.ItemLength + j];
+                            var walk = new string(item.Data, i * item.ItemLength, item.ItemLength).Replace("\0", "");
+                            //wlist.Add(walk);
+                            if (walk.Length == length)
+                            {
+                                if (walks.ContainsKey(walk)) walks[walk]++;
+                                else
+                                {
+                                    walks.Add(walk, 1);
+                                    yield return walk;
+                                }
+                            }
+                            else
+                                tooShort++;
                         }
-                        yield return str;
+                        else
+                        {
+                            //wlist.Add("");
+                            zeroCount++;
+                        }
                     }
+                    walks = null;
                 }
             } while (t.Status == TaskStatus.Running);
+            //return walks.Keys.OrderBy(x => x);
         }
 
         private static Task ExecuteOnDevice(char[][] ngrams, int length, Action<(char[] Data, int ItemLength)> returnData)
@@ -207,33 +237,45 @@ namespace PassGenAI.Keyboard
                 Context context = Cl.CreateContext(null, 1, devices, null, IntPtr.Zero, out err);
                 CommandQueue cmdQueue = Cl.CreateCommandQueue(context, device, CommandQueueProperties.None, out err);
 
-
                 string programSource = @"
                 __kernel void
-                walk(__global char* tblNgram, __global char* globalList, long totalElements, int ngi, int chainCount, int longestChain, int length)
+                walk(__global char* tblNgram, __global char* globalList, long totalElements, int ngi, int chainCount, int longestChain, int length, int offset)
                 {
-	                int groupItemIndex = get_global_id(0);
+                    int tid = get_global_id(0);
+                    int writeIndex = tid*length;
+	                int groupItemIndex = offset + get_global_id(0);
 	                char previousChar;
-	                for (int pass = 0; pass < length; pass++)
+
+                    globalList[tid*length] = tblNgram[ngi*longestChain];                    
+                    previousChar = tblNgram[ngi*longestChain];                 
+
+	                for (int pass = 1; previousChar != '\0' && pass < length; pass++)
 	                {
-		                int groupSize = (int)(totalElements / pow((double)longestChain, (double)pass));
+		                int groupSize = (int)(pow((double)longestChain, (double)(length-pass)));
 		                int groupCount = totalElements / groupSize;
 		                int group = groupItemIndex / groupSize;
-		                int globalOffset = (groupItemIndex * length) + pass;
-		                int ngl = 0;
-		                if (pass != 0)
-		                {
-			                for (int i = 0; i < chainCount; i++)
-			                {
-				                if (tblNgram[i*longestChain] == previousChar)
-					                ngl = i;
-			                }
-		                }
-		                int index = group < longestChain ? group : (int)((((group * 1.0) / longestChain) - trunc((group * 1.0) / longestChain)) * longestChain);
-		                globalList[globalOffset] = tblNgram[((pass == 0 ? ngi : ngl)*longestChain) + (pass == 0 ? 0 : index)];
-                        previousChar = tblNgram[((pass == 0 ? ngi : ngl)*longestChain) + (pass == 0 ? 0 : index)];
+		                int ngl = 0;		                
+			            for (int i = 0; i < chainCount; i++)
+			            {
+				            if (tblNgram[i*longestChain] == previousChar)
+					            ngl = i;
+			            }
+		                int index = groupCount < longestChain ? group : (int)((((group * 1.0) / longestChain) - trunc((group * 1.0) / longestChain)) * longestChain);
+		                globalList[writeIndex+pass] = tblNgram[ngl*longestChain + index];
+                        previousChar = tblNgram[ngl*longestChain + index];
 	                }
+
+                    if(previousChar == '\0' || tid % longestChain != 0)
+                    {
+                        for(int pass = 0; pass < length; pass++)
+                        {
+                            globalList[writeIndex+pass] = '\0';
+                        }
+                    }
                 };";
+
+
+
                 var program = Cl.CreateProgramWithSource(context, 1, new[] { programSource }, null, out err);
                 Cl.BuildProgram(program, 0, null, string.Empty, null, IntPtr.Zero);  //"-cl-mad-enable"
 
@@ -249,7 +291,7 @@ namespace PassGenAI.Keyboard
                 Kernel kernel = Cl.CreateKernel(program, "walk", out err);
 
                 var ngramChains = ngrams.SelectMany(x => x).ToArray();
-                var longestChain = ngrams.Max(x => x.Count()) + 1;
+                var longestChain = ngrams.Max(x => x.Count());
 
                 Mem memChains = (Mem)Cl.CreateBuffer(context, MemFlags.ReadOnly, OpenCL.Net.TypeSize<byte>.SizeInt * ngramChains.Length, out err);
 
@@ -268,36 +310,43 @@ namespace PassGenAI.Keyboard
                 {
                     var ngi = ngrams.ToList().IndexOf(ng);
                     var totalElements = (long)Math.Pow(longestChain, length);
-                    var globalList = new char[totalElements * length];
+                    var maxSize = 500000;
+                    if (ulong.TryParse(Cl.GetDeviceInfo(device, DeviceInfo.GlobalMemSize, out err).ToString(), out var globalMemSize))
+                        maxSize = (int)(globalMemSize / 2);
 
-                    
-                    Mem memList = (Mem)Cl.CreateBuffer(context, MemFlags.WriteOnly, OpenCL.Net.TypeSize<byte>.SizeInt * globalList.Length, out err);
-                    
-                    Cl.SetKernelArg(kernel, 0, memChains);
-                    Cl.SetKernelArg(kernel, 1, memList);
-                    Cl.SetKernelArg(kernel, 2, totalElements);
-                    Cl.SetKernelArg(kernel, 3, ngi);
-                    Cl.SetKernelArg(kernel, 4, (ngramChains.Length / longestChain));
-                    Cl.SetKernelArg(kernel, 5, longestChain);
-                    Cl.SetKernelArg(kernel, 6, length);
-                    IntPtr[] workGroupSizePtr = new IntPtr[] { new IntPtr(globalList.Length) };
-                    err = Cl.EnqueueNDRangeKernel(cmdQueue, kernel, 1, null, workGroupSizePtr, null, 0, null, out event0);
-                    if (ErrorCode.Success != err)
+                    for (int i = 0; (totalElements < maxSize && i == 0) || (i < (int)(totalElements / maxSize)); i++)
                     {
-                        Console.WriteLine("Error calling EnqueueNDRangeKernel: {0}", err.ToString());
-                        throw new Exception(err.ToString());
+                        var runSize = (totalElements - (i * maxSize)) > maxSize ? maxSize : (totalElements - (i * maxSize));
+                        var globalList = new char[runSize * length];
+                        Mem memList = (Mem)Cl.CreateBuffer(context, MemFlags.WriteOnly, OpenCL.Net.TypeSize<byte>.SizeInt * globalList.Length, out err);
+
+                        Cl.SetKernelArg(kernel, 0, memChains);
+                        Cl.SetKernelArg(kernel, 1, memList);
+                        Cl.SetKernelArg(kernel, 2, totalElements);
+                        Cl.SetKernelArg(kernel, 3, ngi);
+                        Cl.SetKernelArg(kernel, 4, (ngramChains.Length / longestChain));
+                        Cl.SetKernelArg(kernel, 5, longestChain);
+                        Cl.SetKernelArg(kernel, 6, length);
+                        Cl.SetKernelArg(kernel, 7, i * maxSize);
+                        IntPtr[] workGroupSizePtr = new IntPtr[] { new IntPtr(runSize) };
+                        err = Cl.EnqueueNDRangeKernel(cmdQueue, kernel, 1, null, workGroupSizePtr, null, 0, null, out event0);
+                        if (ErrorCode.Success != err)
+                        {
+                            Console.WriteLine("Error calling EnqueueNDRangeKernel: {0}", err.ToString());
+                            throw new Exception(err.ToString());
+                        }
+
+                        Cl.Finish(cmdQueue);
+
+                        byte[] results = new byte[globalList.Length];
+                        Cl.EnqueueReadBuffer(cmdQueue, (IMem)memList, Bool.True, IntPtr.Zero, new IntPtr(globalList.Length * OpenCL.Net.TypeSize<byte>.SizeInt), results, 0, null, out event0);
+                        //results = results.Where(x => x != 0).ToArray();
+                        var temp = Array.ConvertAll(results, b => Convert.ToChar(b));
+
+                        returnData((temp, length));
+
+                        Cl.ReleaseMemObject(memList);
                     }
-
-                    Cl.Finish(cmdQueue);
-
-                    byte[] results = new byte[globalList.Length];
-                    Cl.EnqueueReadBuffer(cmdQueue, (IMem)memList, Bool.True, IntPtr.Zero, new IntPtr(globalList.Length * OpenCL.Net.TypeSize<byte>.SizeInt), results, 0, null, out event0);
-                    var temp = Array.ConvertAll(results, b => Convert.ToChar(b));
-
-                    returnData((temp, length));
-                    
-                    Cl.ReleaseMemObject(memList);
-                    
                     //memList.Release();
                 });
 
