@@ -7,6 +7,7 @@ PassGenAI is an example of machine learning being applied to password guessing o
 
 * C#
 * Hidden Markov Model
+* OpenCL Accelerated (GPGPU)
 * AI/ML
 
 ## Before You Build
