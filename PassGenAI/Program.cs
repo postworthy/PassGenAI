@@ -35,10 +35,10 @@ namespace PassGenAI
                     TrainModels(args[1], byPairs: true);
                     break;
                 case "mask":
-                    GenerateMasks(args[1], args[2]);
+                    GenerateMasks(args[1], args.Length > 2 ? args[2] : "{1:00000}\t{2}\t{0}");
                     break;
                 case "deepmask":
-                    GenerateDeepMasks(args[1], args[2]);
+                    GenerateDeepMasks(args[1], args.Length > 2 ? args[2] : "{1:00000}\t{2}\t{0}");
                     break;
                 case "pwds2":
                     if (args.Length == 1) args = new string[] { args[0], "", "" };
@@ -69,9 +69,10 @@ namespace PassGenAI
             Console.WriteLine("4) Train Hidden Markov Model (Pair Based)");
             Console.WriteLine("\tPassGenAI.exe hmm2");
             Console.WriteLine("5) Generate Masks");
-            Console.WriteLine("\tPassGenAI.exe mask");
+            Console.WriteLine("\tPassGenAI.exe mask <FileName> [OutputFormat]");
             Console.WriteLine("6) Generate Deep Masks");
-            Console.WriteLine("\tPassGenAI.exe deepmask");
+            Console.WriteLine("\t(?1 = Lowercase Vowels, ?2 = Lowercase Consonants, ?3 = Uppercase Vowels, ?4 Uppercase Consonants)");
+            Console.WriteLine("\tPassGenAI.exe deepmask <FileName> [OutputFormat]");
             Console.WriteLine("7) Generate Keyboard Walks");
             Console.WriteLine("\tPassGenAI.exe walks [WalkLength (Default=8)]");
         }
@@ -91,9 +92,9 @@ namespace PassGenAI
                     case "hmm3":
                         return args.Length > 1 && File.Exists(args[1]);
                     case "mask":
-                        return args.Length > 2 && File.Exists(args[1]);
+                        return args.Length > 1 && File.Exists(args[1]);
                     case "deepmask":
-                        return args.Length > 2 && File.Exists(args[1]);
+                        return args.Length > 1 && File.Exists(args[1]);
                     case "pwds2":
                         return (args.Length == 2 && (File.Exists(args[1])) || int.TryParse(args[2], out var _)) || (args.Length == 3 && File.Exists(args[1]) && int.TryParse(args[2], out var _));
                     case "walks":

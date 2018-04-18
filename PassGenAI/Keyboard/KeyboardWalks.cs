@@ -146,7 +146,7 @@ namespace PassGenAI.Keyboard
                 {
                     moves.ForEach(m =>
                     {
-                        if (m.x + x >= 0 && m.y + y >= 0 && m.x + x <= keyboard[0].Length - 1 && m.y + y <= keyboard.Length - 1 && !(m.x == 0 && m.y == 0))
+                        if (m.x + x >= 0 && m.y + y >= 0 && m.x + x <= keyboard[0].Length - 1 && m.y + y <= keyboard.Length - 1 /*&& !(m.x == 0 && m.y == 0)*/)
                         {
                             var part1 = keyboard[y][x];
                             var part2 = keyboard[y + m.y][m.x + x];
@@ -166,10 +166,10 @@ namespace PassGenAI.Keyboard
             {
                 var items = x.Select(y => y[1]).ToList();
                 items.Insert(0, x.Key);
-                return items.ToArray();
+                return items.Distinct().ToArray();
             }).ToArray();
 
-            var longestChain = tblNgram.Max(x => x.Count()) + 1;
+            var longestChain = tblNgram.Max(x => x.Count());
 
 
             tblNgram = tblNgram.Select(x =>
@@ -177,7 +177,11 @@ namespace PassGenAI.Keyboard
                 var n = new char[longestChain];
                 Array.Copy(x, n, x.Length);
                 return n;
-            }).OrderByDescending(x => char.IsLetterOrDigit(x[0])).ToArray();
+            })
+            .OrderByDescending(x => char.IsLetterOrDigit(x[0]))
+            .ThenByDescending(x=>char.IsLetter(x[0]))
+            .ThenBy(x=>x[0])
+            .ToArray();
 
             var queue = new System.Collections.Concurrent.ConcurrentQueue<(char[] Data, int ItemLength)>();
 
@@ -251,7 +255,7 @@ namespace PassGenAI.Keyboard
 
 	                for (int pass = 1; previousChar != '\0' && pass < length; pass++)
 	                {
-		                int groupSize = (int)(pow((double)longestChain, (double)(length-pass)));
+		                int groupSize = (int)(pow((double)longestChain, (double)(length-pass-1)));
 		                int groupCount = totalElements / groupSize;
 		                int group = groupItemIndex / groupSize;
 		                int ngl = 0;		                
@@ -265,7 +269,7 @@ namespace PassGenAI.Keyboard
                         previousChar = tblNgram[ngl*longestChain + index];
 	                }
 
-                    if(previousChar == '\0' || tid % longestChain != 0)
+                    if(previousChar == '\0' /*|| tid % longestChain != 0*/)
                     {
                         for(int pass = 0; pass < length; pass++)
                         {
@@ -309,7 +313,7 @@ namespace PassGenAI.Keyboard
                 ngrams.ToList().ForEach(ng =>
                 {
                     var ngi = ngrams.ToList().IndexOf(ng);
-                    var totalElements = (long)Math.Pow(longestChain, length);
+                    var totalElements = (long)Math.Pow(longestChain, length-1);
                     var maxSize = 500000;
                     if (ulong.TryParse(Cl.GetDeviceInfo(device, DeviceInfo.GlobalMemSize, out err).ToString(), out var globalMemSize))
                         maxSize = (int)(globalMemSize / 2);
